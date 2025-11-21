@@ -1,0 +1,3 @@
+[submodule "tfs_dao/lib/openzeppelin-contracts"]
+	path = tfs_dao/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts

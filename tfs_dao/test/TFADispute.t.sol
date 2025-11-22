@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "forge-std/Test.sol";
-import "../src/TFADispute.sol";
-import "../src/TFAEscrow.sol";
+
+import { Test } from "forge-std/Test.sol";
+import { TFADispute } from "../src/TFADispute.sol";
+import { TFAEscrow } from "../src/TFAEscrow.sol";
+import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
 
 // Mock USDC for testing
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
 contract MockUSDC is ERC20 {
     constructor() ERC20("USDC", "USDC") {
         _mint(msg.sender, 1000000 * 10**18);
@@ -15,71 +16,97 @@ contract MockUSDC is ERC20 {
 }
 
 contract TFADisputeTest is Test {
-    TFADispute dispute;
+    TFADispute disputeContract;
     TFAEscrow escrow;
     MockUSDC usdc;
 
     address admin = address(1);
     address aiAgent = address(2);
-    address client = address(4);
-    address contractor = address(5);
+    address client = address(3);
+    address contractor = address(4);
 
     function setUp() public {
-        // 1. Deploy Mock USDC
         vm.startPrank(admin);
         usdc = new MockUSDC();
-        
-        // 2. Deploy Escrow & Dispute
-        // CHANGE: Pass the MockUSDC address to the Escrow
         escrow = new TFAEscrow(address(usdc), admin);
+        disputeContract = new TFADispute(address(escrow), admin);
+
+        escrow.setDisputeContract(address(disputeContract));
+        disputeContract.grantRole(disputeContract.AI_AGENT_ROLE(), aiAgent);
+
+        // FIX 1: Check return value to silence warning
+        bool success = usdc.transfer(client, 1000 ether);
+        require(success, "Setup transfer failed");
         
-        dispute = new TFADispute(address(escrow), admin);
-
-        // 3. Setup Permissions & Links
-        escrow.setDisputeContract(address(dispute));
-        dispute.grantRole(dispute.AI_AGENT_ROLE(), aiAgent);
-
-        // 4. Fund Client
-        usdc.transfer(client, 1000 ether);
         vm.stopPrank();
     }
 
-    function testStage1HappyPath() public {
-        // --- STEP 1: Create Dispute ---
+    // --- TEST 1: Happy Path (No Dispute) ---
+    function testHappyPath() public {
         vm.startPrank(client);
-        usdc.approve(address(escrow), 100 ether); 
-        dispute.createDispute(contractor, 100 ether);
         
-        // Verify Escrow holds the money
-        assertEq(usdc.balanceOf(address(escrow)), 100 ether);
+        // FIX 1: Check return value for approve
+        bool success = usdc.approve(address(escrow), 100 ether);
+        require(success, "Approve failed");
+
+        disputeContract.createJob(contractor, 100 ether);
+        
+        // ... Contractor does work off-chain ...
+        
+        // Client releases funds
+        disputeContract.releaseToContractor(0); 
         vm.stopPrank();
+
+        // Check balances
+        assertEq(usdc.balanceOf(contractor), 100 ether);
+        assertEq(usdc.balanceOf(client), 900 ether);
         
-        // --- STEP 2: Submit Evidence ---
-        vm.prank(contractor);
-        dispute.submitEvidence(0, "QmChatHistoryHash");
+        // FIX 2: Correct number of commas (4 before, 3 after = 8 total fields)
+        (,,,, TFADispute.JobState state,,,) = disputeContract.jobs(0);
+        assertEq(uint(state), uint(TFADispute.JobState.Resolved));
+    }
 
-        // --- STEP 3: AI Verdict ---
+    // --- TEST 2: Dispute Path (AI Intervenes) ---
+    function testDisputePath() public {
+        vm.startPrank(client);
+        
+        // FIX 1: Check return value
+        bool success = usdc.approve(address(escrow), 100 ether);
+        require(success, "Approve failed");
+
+        disputeContract.createJob(contractor, 100 ether);
+        vm.stopPrank();
+
+        // Contractor raises dispute
+        vm.prank(contractor); 
+        disputeContract.raiseDispute(0);
+
+        // FIX 2: Correct number of commas
+        (,,,, TFADispute.JobState state,,,) = disputeContract.jobs(0);
+        assertEq(uint(state), uint(TFADispute.JobState.Disputed));
+
+        // AI Agent resolves it (50/50 Split)
         vm.prank(aiAgent);
-        // AI decides: 80% to Client, 20% to Contractor
-        dispute.submitAiVerdict(0, 80, "QmReasonHash");
+        disputeContract.resolveDispute(0, 50, "Partial work completed");
 
-        // --- STEP 4: Wait Window (3 Days) ---
-        // Try to finalize too early (should fail)
-        vm.expectRevert("Review window still open");
-        dispute.finalizeAiVerdict(0);
+        // Check: Both get 50
+        assertEq(usdc.balanceOf(client), 950 ether);
+        assertEq(usdc.balanceOf(contractor), 50 ether);
+    }
+    
+    // --- TEST 3: Security - Random person cannot raise dispute ---
+    function testRandomCannotRaiseDispute() public {
+        vm.startPrank(client);
+        bool success = usdc.approve(address(escrow), 100 ether);
+        require(success, "Approve failed");
+        
+        disputeContract.createJob(contractor, 100 ether);
+        vm.stopPrank();
 
-        // Warp time forward
-        vm.warp(block.timestamp + 4 days);
-
-        // --- STEP 5: Finalize ---
-        dispute.finalizeAiVerdict(0);
-
-        // --- CHECK RESULTS ---
-        // Client should get 80
-        assertEq(usdc.balanceOf(client), 980 ether); // Started with 1000, spent 100, got 80 back = 980
-        // Contractor should get 20
-        assertEq(usdc.balanceOf(contractor), 20 ether);
-        // Escrow should be empty
-        assertEq(usdc.balanceOf(address(escrow)), 0);
+        vm.prank(address(99)); // Hacker
+        
+        // FIX: Match the exact string from TFADispute.sol ("Not party")
+        vm.expectRevert("Not party"); 
+        disputeContract.raiseDispute(0);
     }
 }

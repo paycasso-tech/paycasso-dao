@@ -333,7 +333,6 @@ contract TFASystemTest is Test {
     }
 
     // ==================== TEST 8: Ban Voter ====================
-    // ==================== TEST 8: Ban Voter (FIXED) ====================
     function testBanVoter() public {
         // Give voter2 some voting history first
         uint256 contractAmount = 1000 * 10**6;

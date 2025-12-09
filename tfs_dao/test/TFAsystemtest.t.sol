@@ -349,7 +349,6 @@ contract TFASystemTest is Test {
 
         daoVoting.startVoting(0);
         
-        // FIX: We need at least 3 votes to finalize!
         vm.prank(voter1);
         daoVoting.castVote(0, 70);
 

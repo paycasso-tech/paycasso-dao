@@ -218,10 +218,14 @@ contract TFASystemTest is Test {
         assertLt(contractorFinal, 10000 * 10**6 + 850 * 10**6); // At most 85%
     }
 
-    // ==================== TEST 5: Karma System ====================
+    // ==================== TEST 5: Karma System (Recovery & Cap) ====================
     function testKarmaSystem() public {
         uint256 contractAmount = 1000 * 10**6;
         createJobWithFees(contractAmount);
+
+        // Manually lower voter1 karma to test recovery
+        vm.prank(admin);
+        daoVoting.adjustVoterKarma(voter1, 80);
 
         vm.prank(contractor);
         disputeContract.raiseDispute(0);
@@ -234,15 +238,15 @@ contract TFASystemTest is Test {
 
         daoVoting.startVoting(0);
 
-        // voter1 votes accurately (70)
+        // voter1 votes accurately (70) -> Should recover +3
         vm.prank(voter1);
         daoVoting.castVote(0, 70);
         
-        // voter2 votes way off (outlier)
+        // voter2 votes way off (outlier) -> Should lose karma (Quadratic)
         vm.prank(voter2);
         daoVoting.castVote(0, 10);
         
-        // voter3 votes close
+        // voter3 votes close (72) and is at 100 -> Should stay at 100 (Max Cap)
         vm.prank(voter3);
         daoVoting.castVote(0, 72);
 
@@ -254,14 +258,14 @@ contract TFASystemTest is Test {
         uint256 voter2Karma = daoVoting.getVoterKarma(voter2);
         uint256 voter3Karma = daoVoting.getVoterKarma(voter3);
 
-        // voter1 should have gained karma (accurate vote)
-        assertGt(voter1Karma, 100);
+        // voter1 should have recovered: 80 + 3 = 83
+        assertEq(voter1Karma, 83);
         
         // voter2 should have lost karma (outlier)
         assertLt(voter2Karma, 100);
         
-        // voter3 should have gained some karma (close vote)
-        assertGt(voter3Karma, 100);
+        // voter3 should NOT have gained karma (Capped at 100)
+        assertEq(voter3Karma, 100);
     }
 
     // ==================== TEST 6: Multiple Disputes (Karma Accumulation) ====================
@@ -302,7 +306,7 @@ contract TFASystemTest is Test {
         uint256 voter1Karma = daoVoting.getVoterKarma(voter1);
         uint256 voter2Karma = daoVoting.getVoterKarma(voter2);
 
-        assertGt(voter1Karma, 105); // Multiple rewards
+        assertEq(voter1Karma, 100); // Multiple rewards but capped at 100
         assertLt(voter2Karma, 50);  // Multiple penalties
     }
 
@@ -422,10 +426,10 @@ contract TFASystemTest is Test {
         
         // Admin adjusts karma
         vm.prank(admin);
-        daoVoting.adjustVoterKarma(voter1, 150);
+        daoVoting.adjustVoterKarma(voter1, 90);
         
         uint256 newKarma = daoVoting.getVoterKarma(voter1);
-        assertEq(newKarma, 150);
+        assertEq(newKarma, 90);
         assertNotEq(newKarma, oldKarma);
     }
 
@@ -443,5 +447,28 @@ contract TFASystemTest is Test {
         assertEq(usdc.balanceOf(client), clientBalBefore - contractAmount - feeAmount);
         assertEq(usdc.balanceOf(contractor), contractorBalBefore - feeAmount);
         assertEq(usdc.balanceOf(address(escrow)), contractAmount + (2 * feeAmount));
+    }
+
+    // ==================== TEST 13: Backend Config ====================
+    function testBackendConfig() public {
+        vm.startPrank(admin);
+        
+        // Test setVotingDuration
+        daoVoting.setVotingDuration(2 days);
+        assertEq(daoVoting.votingDuration(), 2 days);
+        
+        // Test invalid duration
+        vm.expectRevert("Invalid duration");
+        daoVoting.setVotingDuration(0);
+        
+        // Test setMinVotersRequired
+        daoVoting.setMinVotersRequired(5);
+        assertEq(daoVoting.minVotersRequired(), 5);
+        
+        // Test invalid min voters
+        vm.expectRevert("Invalid count");
+        daoVoting.setMinVotersRequired(0);
+        
+        vm.stopPrank();
     }
 }

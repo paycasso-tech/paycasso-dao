@@ -22,7 +22,7 @@ contract TFADAOVoting is AccessControl {
     // Karma constants
     uint256 public constant STARTING_KARMA = 100;
     uint256 public constant MIN_KARMA = 20;
-    uint256 public constant MAX_KARMA = 200;
+    uint256 public constant MAX_KARMA = 100;
     
     // Outlier detection constants
     uint256 public constant MAD_MULTIPLIER = 3;
@@ -154,6 +154,24 @@ contract TFADAOVoting is AccessControl {
         voterKarma[_voter] = _newKarma;
         
         emit KarmaAdjustedByAdmin(_voter, oldKarma, _newKarma);
+    }
+
+    /**
+     * @notice Set voting duration (ADMIN ONLY)
+     * @param _duration Duration in seconds (1-30 days)
+     */
+    function setVotingDuration(uint256 _duration) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_duration >= 1 days && _duration <= 30 days, "Invalid duration");
+        votingDuration = _duration;
+    }
+
+    /**
+     * @notice Set minimum voters required (ADMIN ONLY)
+     * @param _count Number of voters (1-20)
+     */
+    function setMinVotersRequired(uint256 _count) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_count >= 1 && _count <= 20, "Invalid count");
+        minVotersRequired = _count;
     }
 
     /**
@@ -369,24 +387,18 @@ contract TFADAOVoting is AccessControl {
                     newKarma = MIN_KARMA;
                 }
             } else {
-                // Reward based on accuracy
-                if (vote.deviation <= 5) {
-                    // Excellent: within ±5%
-                    newKarma += EXCELLENT_REWARD;
-                } else if (vote.deviation <= 10) {
-                    // Good: within ±10%
-                    newKarma += GOOD_REWARD;
-                }
-                // Within ±15%: no change (neutral)
+                // Accuracy check (Good/Excellent treated as "Good" for recovery)
+                bool isGoodVote = vote.deviation <= 10;
                 
-                // Apply redemption boost if below starting karma
-                if (oldKarma < STARTING_KARMA && newKarma > oldKarma) {
-                    uint256 bonus = newKarma - oldKarma;
-                    newKarma = oldKarma + (bonus * 2); // 2x gains
+                // Only gain karma if below MAX (Recovery Mode)
+                if (isGoodVote && oldKarma < MAX_KARMA) {
+                    // Recovery rate: +3
+                    newKarma += 3;
+                    
+                    // Cap at MAX_KARMA
+                    if (newKarma > MAX_KARMA) newKarma = MAX_KARMA;
                 }
-                
-                // Cap at MAX_KARMA
-                if (newKarma > MAX_KARMA) newKarma = MAX_KARMA;
+                // If at 100, no growth. Cost of business.
             }
             
             if (newKarma != oldKarma) {

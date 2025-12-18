@@ -1,0 +1,5 @@
+# Repeat for at least 3 unique voter addresses
+cast send 0x2374268383163b8dcc62F6FF9aAcb3373DCe560c \
+"registerVoter(address)" <VOTER_WALLET_ADDRESS> \
+--rpc-url base_sepolia \
+--private-key <YOUR_ADMIN_PRIVATE_KEY>

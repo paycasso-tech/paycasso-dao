@@ -11,28 +11,20 @@ contract DeployTestnet is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address admin = vm.addr(deployerPrivateKey);
         
-        // Base Sepolia USDC Address
         address usdcAddress = 0x036CbD53842c5426634e7929541eC2318f3dCF7e; 
 
         vm.startBroadcast(deployerPrivateKey);
 
-        // Step 1: Deploy Escrow
         TFAEscrow escrow = new TFAEscrow(usdcAddress, admin);
 
-        // Step 2: Deploy Dispute
         TFADispute dispute = new TFADispute(address(escrow), admin);
 
-        // Step 3: Deploy DAO Voting
         TFADAOVoting dao = new TFADAOVoting(address(escrow), address(dispute), admin);
 
-        // Step 4: Critical Cross-Linking
         escrow.setDisputeContract(address(dispute));
         escrow.setDAOContract(address(dao));
         dispute.setDAOContract(address(dao));
 
-        // Step 5: Grant AI Agent Role (Optional but recommended now)
-        // bytes32 AI_ROLE = keccak256("AI_AGENT_ROLE");
-        // dispute.grantRole(AI_ROLE, <YOUR_BACKEND_WALLET_ADDRESS>);
 
         vm.stopBroadcast();
         

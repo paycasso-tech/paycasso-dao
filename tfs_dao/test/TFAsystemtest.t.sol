@@ -147,7 +147,7 @@ contract TFASystemTest is Test {
         disputeContract.rejectAIVerdict(0);
 
         // DAO voting starts
-        daoVoting.startVoting(0);
+        daoVoting.startVoting(0, 5 days);
 
         // Voters cast votes
         vm.prank(voter1);
@@ -191,7 +191,7 @@ contract TFASystemTest is Test {
         vm.prank(client);
         disputeContract.rejectAIVerdict(0);
 
-        daoVoting.startVoting(0);
+        daoVoting.startVoting(0, 5 days);
 
         // Cast votes
         vm.prank(voter1);
@@ -236,7 +236,7 @@ contract TFASystemTest is Test {
         vm.prank(client);
         disputeContract.rejectAIVerdict(0);
 
-        daoVoting.startVoting(0);
+        daoVoting.startVoting(0, 5 days);
 
         // voter1 votes accurately (70) -> Should recover +3
         vm.prank(voter1);
@@ -283,7 +283,7 @@ contract TFASystemTest is Test {
             vm.prank(client);
             disputeContract.rejectAIVerdict(i);
 
-            daoVoting.startVoting(i);
+            daoVoting.startVoting(i, 5 days);
             
             // voter1 always accurate
             vm.prank(voter1);
@@ -351,7 +351,7 @@ contract TFASystemTest is Test {
         vm.prank(client);
         disputeContract.rejectAIVerdict(0);
 
-        daoVoting.startVoting(0);
+        daoVoting.startVoting(0, 5 days);
         
         vm.prank(voter1);
         daoVoting.castVote(0, 70);
@@ -412,7 +412,7 @@ contract TFASystemTest is Test {
         vm.prank(client);
         disputeContract.rejectAIVerdict(0);
 
-        daoVoting.startVoting(0);
+        daoVoting.startVoting(0, 5 days);
         
         // voter3 tries to vote - should fail
         vm.prank(voter3);

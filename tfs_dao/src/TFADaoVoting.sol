@@ -47,6 +47,7 @@ contract TFADAOVoting is AccessControl {
         uint256 startTime;
         uint256 endTime;
         uint256 totalVotes;
+        uint256 duration;
         mapping(address => bool) hasVoted;
         mapping(uint256 => Vote) votes; // index => Vote
         
@@ -178,10 +179,12 @@ contract TFADAOVoting is AccessControl {
      * @notice Start a voting session for a disputed job
      * @param _jobId Job identifier from TFADispute
      */
-    function startVoting(uint256 _jobId) external {
+    function startVoting(uint256 _jobId,uint256 _customDuration) external {
         VotingSession storage session = votingSessions[_jobId];
         require(!session.isActive, "Already active");
         require(!session.isFinalized, "Already finalized");
+
+        require(_customDuration >= 1 days && _customDuration <= 30 days, "Invalid duration");
 
         // Verify job is in DAOEscalated state
         (,,,,,TFADispute.JobState state,,,,,,) = disputeContract.jobs(_jobId);
@@ -190,7 +193,8 @@ contract TFADAOVoting is AccessControl {
         session.jobId = _jobId;
         session.isActive = true;
         session.startTime = block.timestamp;
-        session.endTime = block.timestamp + votingDuration;
+        session.duration = _customDuration;
+        session.endTime = block.timestamp + _customDuration ;
         session.totalVotes = 0;
         session.isFinalized = false;
 

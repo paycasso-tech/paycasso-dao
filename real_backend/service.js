@@ -3,10 +3,10 @@ const express = require("express");
 const { ethers } = require("ethers");
 const mongoose = require("mongoose");
 const Job = require("./models/model");
-const { fromUSDC, toUSDC } = require("./utils/web3Helper");
+const { fromUSDC, toUSDC } = require("./utils/helper");
 
-const DisputeArtifact = require("./out/TFADispute.sol/TFADispute.json");
-const DAOVotingArtifact = require("./out/TFADaoVoting.sol/TFADAOVoting.json");
+const DisputeArtifact = require("./abis/TFADispute.json");
+const DAOVotingArtifact = require("./abis/TFADAOVoting.json");
 
 const app = express();
 app.use(express.json());

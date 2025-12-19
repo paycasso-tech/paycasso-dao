@@ -1,117 +1,126 @@
 require("dotenv").config();
+const express = require("express");
 const { ethers } = require("ethers");
 const mongoose = require("mongoose");
 const Job = require("./models/model");
+const { fromUSDC, toUSDC } = require("./utils/web3Helper");
 
 const DisputeArtifact = require("./out/TFADispute.sol/TFADispute.json");
 const DAOVotingArtifact = require("./out/TFADaoVoting.sol/TFADAOVoting.json");
 
-const DISPUTE_ADDR = process.env.TFA_DISPUTE_ADDRESS;
-const DAO_ADDR = process.env.TFA_DAO_VOTING_ADDRESS;
-const PRIVATE_KEY = process.env.AI_WALLET_PRIVATE_KEY;
-const RPC_URL = process.env.BASE_RPC_URL || "https://sepolia.base.org";
+const app = express();
+app.use(express.json());
 
-async function startProductionService() {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log(" Production: Connected to MongoDB");
-  } catch (err) {
-    console.error(" MongoDB Connection Error:", err);
-    process.exit(1);
-  }
+const provider = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL);
+const aiWallet = new ethers.Wallet(process.env.AI_WALLET_PRIVATE_KEY, provider);
 
-  // Blockchain Setup
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+// Contract Instances
+const disputeContract = new ethers.Contract(
+  process.env.TFA_DISPUTE_ADDRESS,
+  DisputeArtifact.abi,
+  aiWallet
+);
+const daoContract = new ethers.Contract(
+  process.env.TFA_DAO_VOTING_ADDRESS,
+  DAOVotingArtifact.abi,
+  aiWallet
+);
 
-  const disputeContract = new ethers.Contract(
-    DISPUTE_ADDR,
-    DisputeArtifact.abi,
-    wallet
-  );
-  const daoContract = new ethers.Contract(
-    DAO_ADDR,
-    DAOVotingArtifact.abi,
-    wallet
-  );
-
-  console.log(`AI Agent Active: Listening on ${DISPUTE_ADDR}`);
-
-  disputeContract.on("DisputeRaised", async (jobId, raisedBy) => {
-    const id = Number(jobId);
-    console.log(`[DISPUTE] Job #${id} triggered by ${raisedBy}`);
-
-    try {
-      const jobRecord = await Job.findOne({ jobId: id });
-      if (!jobRecord) {
-        console.warn(`[WARN] Job #${id} not found in database.`);
-        return;
-      }
-
-      const verdict = {
-        contractorPercent: 70,
-        explanation:
-          "Deliverables met the core requirements, but the final documentation was missing.",
-      };
-
-      console.log(`[TX] Submitting verdict for Job #${id}...`);
-      const tx = await disputeContract.submitAIVerdict(
-        id,
-        verdict.contractorPercent,
-        verdict.explanation
-      );
-
-      const receipt = await tx.wait();
-      console.log(
-        `[SUCCESS] On-chain verdict confirmed in block ${receipt.blockNumber}`
-      );
-
-      jobRecord.status = "AIResolved";
-      jobRecord.aiVerdict = {
-        contractorPercent: verdict.contractorPercent,
-        explanation: verdict.explanation,
-        deadline: new Date(Date.now() + 72 * 60 * 60 * 1000), 
-      };
-      await jobRecord.save();
-    } catch (error) {
-      console.error(`[ERROR] Failed to resolve Job #${id}:`, error.message);
-    }
+/**
+ * BLOCKCHAIN LISTENERS (Keep DB in sync with Chain)
+ */
+const startListeners = () => {
+  // Sync Job Creation
+  disputeContract.on("JobCreated", async (id, client, contractor, amount) => {
+    console.log(`Syncing Job #${id} to Database...`);
+    await Job.findOneAndUpdate(
+      { jobId: Number(id) },
+      {
+        clientAddress: client,
+        contractorAddress: contractor,
+        amountUSDC: fromUSDC(amount),
+        status: "Active",
+      },
+      { upsert: true }
+    );
   });
-}
+
+  // Sync Dispute Status
+  disputeContract.on("DisputeRaised", async (id, raisedBy) => {
+    const job = await Job.findOneAndUpdate(
+      { jobId: Number(id) },
+      { status: "DisputeRaised" }
+    );
+    // Trigger AI Logic internally
+    processAIDispute(Number(id), job.evidence);
+  });
+};
 
 
-async function escalateToDAO(jobId, durationSeconds) {
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
-  const daoContract = new ethers.Contract(
-    DAO_ADDR,
-    DAOVotingArtifact.abi,
-    wallet
-  );
-
-  console.log(
-    `[DAO] Escalating Job #${jobId} with duration: ${durationSeconds}s`
-  );
-
+async function processAIDispute(jobId, evidence) {
   try {
-    const tx = await daoContract.startVoting(jobId, durationSeconds);
+    // Mock AI logic - determine split based on evidence
+    const verdict = { percent: 60, reason: "Partially completed work." };
+
+    console.log(`Submitting AI Verdict for Job #${jobId}...`);
+    const tx = await disputeContract.submitAIVerdict(
+      jobId,
+      verdict.percent,
+      verdict.reason
+    );
     await tx.wait();
 
     await Job.findOneAndUpdate(
       { jobId },
       {
-        status: "DAOEscalated",
-        daoDuration: durationSeconds,
+        status: "AIResolved",
+        "aiVerdict.contractorPercent": verdict.percent,
+        "aiVerdict.explanation": verdict.reason,
+        "aiVerdict.deadline": new Date(Date.now() + 72 * 60 * 60 * 1000), // 72h window
       }
     );
-    console.log(`[DAO] Job #${jobId} is now live for voting.`);
   } catch (err) {
-    console.error(`[DAO ERROR] Job #${jobId} escalation failed:`, err.message);
+    console.error("AI Submission Failed:", err);
   }
 }
 
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+
+// 1. Get Job Details (Abstracts away BigInts)
+app.get("/api/job/:id", async (req, res) => {
+  const job = await Job.findOne({ jobId: req.params.id });
+  res.json(job);
 });
 
-startProductionService().catch(console.error);
+// 2. Escalate to DAO (Backend handles the complex 2-argument call)
+app.post("/api/job/:id/escalate", async (req, res) => {
+  const { id } = req.params;
+  const { durationSeconds } = req.body; // e.g., 432000 for 5 days
+
+  try {
+    // Call the updated startVoting function
+    const tx = await daoContract.startVoting(id, durationSeconds);
+    const receipt = await tx.wait();
+
+    await Job.findOneAndUpdate({ jobId: id }, { status: "DAOEscalated" });
+    res.json({ success: true, txHash: receipt.hash });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Post Evidence (Off-chain storage for AI to read)
+app.post("/api/job/:id/evidence", async (req, res) => {
+  const { message, fileUrl, sender } = req.body;
+  await Job.findOneAndUpdate(
+    { jobId: req.params.id },
+    { $push: { evidence: { sender, message, fileUrl, timestamp: new Date() } } }
+  );
+  res.json({ success: true });
+});
+
+mongoose.connect(process.env.MONGODB_URI).then(() => {
+  app.listen(3000, () => {
+    console.log("Server running on port 3000");
+    startListeners();
+  });
+});

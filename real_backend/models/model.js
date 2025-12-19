@@ -2,13 +2,14 @@ const mongoose = require("mongoose");
 
 const jobSchema = new mongoose.Schema(
   {
-    jobId: { type: Number, unique: true, required: true },
-    client: String,
-    contractor: String,
-    amount: String,
+    jobId: { type: Number, unique: true }, 
+    clientAddress: String,
+    contractorAddress: String,
+    amountUSDC: Number,
     status: {
       type: String,
       enum: [
+        "PendingApproval",
         "Active",
         "DisputeRaised",
         "AIResolved",
@@ -17,11 +18,24 @@ const jobSchema = new mongoose.Schema(
       ],
       default: "Active",
     },
-    evidence: [String], 
+    evidence: [
+      {
+        sender: String,
+        message: String,
+        fileUrl: String,
+        timestamp: Date,
+      },
+    ],
     aiVerdict: {
       contractorPercent: Number,
       explanation: String,
-      timestamp: Date,
+      deadline: Date, 
+      txHash: String,
+    },
+    daoSession: {
+      endTime: Date,
+      durationSeconds: Number,
+      consensusPercent: Number,
     },
   },
   { timestamps: true }

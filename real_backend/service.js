@@ -10,8 +10,9 @@ const DAOVotingArtifact = require("./abis/TFADAOVoting.json");
 
 const app = express();
 app.use(express.json());
-
-const provider = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL);
+// Replace JsonRpcProvider with WebSocketProvider
+const provider = new ethers.WebSocketProvider(process.env.BASE_WSS_URL);
+// const provider = new ethers.JsonRpcProvider(process.env.BASE_RPC_URL);
 const aiWallet = new ethers.Wallet(process.env.AI_WALLET_PRIVATE_KEY, provider);
 
 // Contract Instances

@@ -85,7 +85,7 @@ contract TFADispute is AccessControl {
 
         uint256 jobId = nextJobId++;
         uint256 feeAmount = (_amount * feePercentage) / 100;
-        require(feeAmount >= 10 * 10**6, "Fee too small"); // Minimum 10 USDC
+
 
         jobs[jobId] = Job({
             id: jobId,

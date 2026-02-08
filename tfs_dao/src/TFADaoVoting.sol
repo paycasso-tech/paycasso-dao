@@ -162,7 +162,7 @@ contract TFADAOVoting is AccessControl {
      * @param _duration Duration in seconds (1-30 days)
      */
     function setVotingDuration(uint256 _duration) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(_duration >= 1 days && _duration <= 30 days, "Invalid duration");
+        require(_duration >= 1 && _duration <= 30 days, "Invalid duration");
         votingDuration = _duration;
     }
 
@@ -184,7 +184,7 @@ contract TFADAOVoting is AccessControl {
         require(!session.isActive, "Already active");
         require(!session.isFinalized, "Already finalized");
 
-        require(_customDuration >= 1 days && _customDuration <= 30 days, "Invalid duration");
+        require(_customDuration >= 1 && _customDuration <= 30 days, "Invalid duration");
 
         // Verify job is in DAOEscalated state
         (,,,,,TFADispute.JobState state,,,,,,) = disputeContract.jobs(_jobId);
